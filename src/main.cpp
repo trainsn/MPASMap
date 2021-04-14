@@ -265,7 +265,7 @@ int main(int argc, char **argv)
 	char input_path[1024];
 	sprintf(input_path, "/fs/project/PAS0027/MPAS1/Inter/%s", filename);
 	//loadMeshFromNetCDF("D:\\OSU\\Grade1\\in-situ\\6.0\\output.nc");
-	//loadMeshFromNetCDF("D:\\OSU\\Grade1\\in-situ\\MPAS-server\\Results\\0070_4.88364_578.19012_0.51473_227.95909_ght0.2_epoch420.nc");
+	//loadMeshFromNetCDF("D:\\OSU\\Grade1\\in-situ\\MPAS-server\\Inter\\0070_4.88364_578.19012_0.51473_227.95909_ght0.2_epoch420.nc");
 	loadMeshFromNetCDF(input_path);
 
 	// glfw: initialize and configure
