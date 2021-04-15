@@ -54,7 +54,7 @@ void main(){
 				int cell_id = cellIds[i];
 				vec4 xyzw = vec4(
 								(lon[i] - M_PI * 220.0 / 180.0) / (M_PI / 3.0),
-								lat[i] * 2 / (M_PI / 7.0),
+								lat[i] / (M_PI / 7.0),
 								0.0,
 								1.0);
 
