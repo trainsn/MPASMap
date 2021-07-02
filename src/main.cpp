@@ -260,13 +260,15 @@ int main(int argc, char **argv)
 	int timestep;
 	sscanf(timeid, "%d", &timestep);
 	fprintf(stderr, "%s/%s\n", argv[1], snapshots[timestep].c_str()); 
+	char dir[1024];
+	sprintf(dir, argv[3]);
 	
 	string input_name = filename;
     int pos_first_dash = input_name.find("_");
 	string fileid = input_name.substr(0, pos_first_dash);
 	
 	char input_path[1024];
-	sprintf(input_path, "/fs/project/PAS0027/MPAS2/Results/%s/%s", filename, snapshots[timestep].c_str());
+	sprintf(input_path, "/fs/project/PAS0027/MPAS2/%s/%s/%s", dir, fileid.c_str(), snapshots[timestep].c_str());
 	//loadMeshFromNetCDF("D:\\OSU\\Grade1\\in-situ\\6.0\\output.nc");
 	//loadMeshFromNetCDF("D:\\OSU\\Grade1\\in-situ\\MPAS-server\\Inter\\0070_4.88364_578.19012_0.51473_227.95909_ght0.2_epoch420.nc");
 	loadMeshFromNetCDF(input_path);
@@ -382,7 +384,7 @@ int main(int argc, char **argv)
 
 		stbi_flip_vertically_on_write(1);
 		char imagepath[1024];
-		sprintf(imagepath, "/fs/project/PAS0027/MPAS2/Results/%s/t%s/layer%d.png", fileid.c_str(), timeid, layer_id);
+		sprintf(imagepath, "/fs/project/PAS0027/MPAS2/%s/%s/t%s/layer%d.png", dir, fileid.c_str(), timeid, layer_id);
 		float* pBuffer = new float[SCR_WIDTH * SCR_HEIGHT * 4];
 		unsigned char* pImage = new unsigned char[SCR_WIDTH * SCR_HEIGHT * 3];
 		glReadBuffer(GL_BACK);
