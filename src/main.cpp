@@ -1,5 +1,24 @@
+/*
+ * see
+ * https://devblogs.nvidia.com/egl-eye-opengl-visualization-without-x-server/
+ */
+
+#define MESA_EGL_NO_X11_HEADERS
+#define EGL_NO_X11
+#define EGL_EGLEXT_PROTOTYPES
+#define MY_EGL_CHECK()                                                         \
+  do {                                                                         \
+    auto error = eglGetError();                                                \
+    if (error != EGL_SUCCESS) {                                                \
+      std::cout << "EGL error  before " << __LINE__ << " of " << __FILE__      \
+                << ":  " << get_egl_error_info(error) << std::endl;            \
+    }                                                                          \
+  } while (0)
+
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
+
 #include <glad/glad.h>
-#include <GLFW/glfw3.h>
 #define _USE_MATH_DEFINES
 
 #include <glm/glm.hpp>
@@ -24,13 +43,44 @@
 #include "stb_image_write.h"
 using namespace std;
 
-void framebuffer_size_callback(GLFWwindow* window, int width, int height);
+constexpr int opengl_version[] = {3, 3};
 
 // settings
 // const unsigned int SCR_WIDTH = 1024;
 // const unsigned int SCR_HEIGHT = 512;
-const unsigned int SCR_WIDTH = 420;
-const unsigned int SCR_HEIGHT = 180;
+const unsigned int SCR_WIDTH = 1536;
+const unsigned int SCR_HEIGHT = 768;
+
+constexpr EGLint config_attribs[] = {EGL_SURFACE_TYPE,
+                                     EGL_PBUFFER_BIT,
+                                     EGL_BLUE_SIZE,
+                                     8,
+                                     EGL_GREEN_SIZE,
+                                     8,
+                                     EGL_RED_SIZE,
+                                     8,
+                                     EGL_DEPTH_SIZE,
+                                     8,
+                                     EGL_RENDERABLE_TYPE,
+                                     EGL_OPENGL_BIT,
+                                     EGL_NONE};
+
+constexpr EGLint pixel_buffer_attribs[] = {
+    EGL_WIDTH, SCR_WIDTH, EGL_HEIGHT, SCR_HEIGHT, EGL_NONE,
+};
+
+constexpr EGLint context_attris[] = {EGL_CONTEXT_MAJOR_VERSION,
+                                     opengl_version[0],
+                                     EGL_CONTEXT_MINOR_VERSION,
+                                     opengl_version[1],
+                                     EGL_CONTEXT_OPENGL_PROFILE_MASK,
+                                     EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
+                                     EGL_NONE};
+
+EGLDisplay create_display_from_device();
+void render(int width, int height);
+void write_to_file(int width, int height, const char *filename);
+const char *get_egl_error_info(EGLint error);
 
 size_t nCells, nEdges, nVertices, nVertLevels, maxEdges, vertexDegree, Time;
 vector<double> latVertex, lonVertex, xVertex, yVertex, zVertex;
@@ -252,9 +302,58 @@ void initTextures() {
 	glGenTextures(1, &salinityTex);
 }
 
-int main(int argc, char **argv)
-{
-    char filename[1024];
+int main(int argc, char *argv[]) {
+	// 1. Initialize EGL
+	auto egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+	if (egl_display == EGL_NO_DISPLAY) {
+		cout << "No default display, try to create a display "
+			"from devices."
+			<< endl;
+		// try EXT_platform_device, see
+		// https://www.khronos.org/registry/EGL/extensions/EXT/EGL_EXT_platform_device.txt
+		egl_display = create_display_from_device();
+	}
+
+	EGLint major = 0, minor = 0;
+	eglInitialize(egl_display, &major, &minor);
+// 	cout << "EGL version: " << major << "." << minor << endl;
+// 	cout << "EGL vendor string: " << eglQueryString(egl_display, EGL_VENDOR) << endl;
+	MY_EGL_CHECK();
+
+	// 2. Select an appropriate configuration
+	EGLint num_configs = 0;
+	EGLConfig egl_config = nullptr;
+	eglChooseConfig(egl_display, config_attribs, &egl_config, 1, &num_configs);
+	MY_EGL_CHECK();
+
+	// 3. Create a surface
+	auto egl_surface =
+		eglCreatePbufferSurface(egl_display, egl_config, pixel_buffer_attribs);
+	MY_EGL_CHECK();
+
+	// 4. Bind the API
+	eglBindAPI(EGL_OPENGL_API);
+	MY_EGL_CHECK();
+
+	// 5. Create a context and make it current
+	auto egl_ctx =
+		eglCreateContext(egl_display, egl_config, EGL_NO_CONTEXT, context_attris);
+	MY_EGL_CHECK();
+
+	eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_ctx);
+	MY_EGL_CHECK();
+
+	// from now on use your OpenGL context
+	if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(&eglGetProcAddress))) {
+		cout << "Load OpenGL " << opengl_version[0] << "." << opengl_version[1]
+			<< "failed" << endl;
+		return -1;
+	}
+
+// 	cout << "OpenGL version: " << GLVersion.major << "." << GLVersion.minor << endl;
+
+	// render and save
+	    char filename[1024];
 	sprintf(filename, argv[1]);
 	fprintf(stderr, "%s\n", argv[1]); 
 	
@@ -265,40 +364,10 @@ int main(int argc, char **argv)
 	string fileid = filename_s.substr(0, pos_first_dash);
 	
 	char input_path[1024];
-	sprintf(input_path, "/fs/project/PAS0027/MPAS1/Case/%s", filename);
+	sprintf(input_path, "/fs/project/PAS0027/MPAS1/Results/%s", filename);
 	//loadMeshFromNetCDF("D:\\OSU\\Grade1\\in-situ\\6.0\\output.nc");
 	//loadMeshFromNetCDF("D:\\OSU\\Grade1\\in-situ\\MPAS-server\\Inter\\0070_4.88364_578.19012_0.51473_227.95909_ght0.2_epoch420.nc");
 	loadMeshFromNetCDF(input_path);
-
-	// glfw: initialize and configure
-	// ------------------------------
-	glfwInit();
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-#ifdef __APPLE__
-	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // uncomment this statement to fix compilation on OS X
-#endif
-
-	// glfw window creation
-	// --------------------
-	GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "MPASMap", NULL, NULL);
-	if (window == NULL)
-	{
-		std::cout << "Failed to create GLFW window" << std::endl;
-		glfwTerminate();
-		return -1;
-	}
-	glfwMakeContextCurrent(window);
-
-	// glad: load all OpenGL function pointers
-	// ---------------------------------------
-	if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
-	{
-		std::cout << "Failed to initialize GLAD" << std::endl;
-		return -1;
-	}
 
 	// configure global opengl state
 	// -----------------------------
@@ -318,8 +387,8 @@ int main(int argc, char **argv)
 	// render loop
 	// -----------
 	// while (!glfwWindowShouldClose(window))
-// 	for (int layer_id = 0; layer_id < nVertLevels / 3; layer_id++)
-    int layer_id = 0;
+	for (int layer_id = 0; layer_id < nVertLevels / 3; layer_id++)
+    // int layer_id = 0;
 	{
 		// render
 		// ------
@@ -382,7 +451,7 @@ int main(int argc, char **argv)
 
 		stbi_flip_vertically_on_write(1);
 		char imagepath[1024];
-		sprintf(imagepath, "/fs/project/PAS0027/MPAS1/Case/%s/gray_equator_layer%d.png", fileid.c_str(), layer_id);
+		sprintf(imagepath, "/fs/project/PAS0027/MPAS1/Resample/%s/gray_equator_layer%d.png", fileid.c_str(), layer_id);
 		float* pBuffer = new float[SCR_WIDTH * SCR_HEIGHT * 4];
 		unsigned char* pImage = new unsigned char[SCR_WIDTH * SCR_HEIGHT * 3];
 		glReadBuffer(GL_BACK);
@@ -398,11 +467,6 @@ int main(int argc, char **argv)
 		stbi_write_png(imagepath, SCR_WIDTH, SCR_HEIGHT, 3, pImage, SCR_WIDTH * 3);
 		delete pBuffer;
 		delete pImage;
-
-		// glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
-		// -------------------------------------------------------------------------------
-		glfwSwapBuffers(window);
-		glfwPollEvents();
 	}
 
 	// optional: de-allocate all resources once they've outlived their purpose:
@@ -410,15 +474,83 @@ int main(int argc, char **argv)
 	glDeleteVertexArrays(1, &VAO);
 	glDeleteBuffers(1, &VBO);
 
-	glfwTerminate();
+	// 6. Terminate EGL when finished
+	eglTerminate(egl_display);
 	return 0;
 }
 
-// glfw: whenever the window size changed (by OS or user resize) this callback function executes
-// ---------------------------------------------------------------------------------------------
-void framebuffer_size_callback(GLFWwindow* window, int width, int height)
-{
-	// make sure the viewport matches the new window dimensions; note that width and 
-	// height will be significantly larger than specified on retina displays.
-	glViewport(0, 0, width, height);
+EGLDisplay create_display_from_device() {
+	auto eglGetPlatformDisplayEXT =
+		reinterpret_cast<PFNEGLGETPLATFORMDISPLAYEXTPROC>(
+			eglGetProcAddress("eglGetPlatformDisplayEXT"));
+	if (eglGetPlatformDisplayEXT == nullptr) {
+		cerr << "eglGetPlatformDisplayEXT not found" << endl;
+		return EGL_NO_DISPLAY;
+	}
+
+	auto eglQueryDevicesEXT = reinterpret_cast<PFNEGLQUERYDEVICESEXTPROC>(
+		eglGetProcAddress("eglQueryDevicesEXT"));
+	if (eglQueryDevicesEXT == nullptr) {
+		cerr << "eglQueryDevicesEXT not found" << endl;
+		return EGL_NO_DISPLAY;
+	}
+
+	EGLint max_devices = 0, num_devices = 0;
+	eglQueryDevicesEXT(0, nullptr, &max_devices);
+
+	auto devices = new EGLDeviceEXT[max_devices];
+	eglQueryDevicesEXT(max_devices, devices, &num_devices);
+
+	EGLint major = 0, minor = 0;
+	cout << "Detected " << num_devices << " devices." << endl;
+	for (int i = 0; i < num_devices; ++i) {
+		auto display =
+			eglGetPlatformDisplayEXT(EGL_PLATFORM_DEVICE_EXT, devices[i], nullptr);
+		if (!eglInitialize(display, &major, &minor)) {
+			cout << "  Failed to initialize EGL with device " << i << endl;
+			continue;
+		}
+
+		cout << "  Device #" << i << " is used." << endl;
+		return display;
+	}
+
+	return EGL_NO_DISPLAY;
+}
+
+const char *get_egl_error_info(EGLint error) {
+	switch (error) {
+	case EGL_NOT_INITIALIZED:
+		return "EGL_NOT_INITIALIZED";
+	case EGL_BAD_ACCESS:
+		return "EGL_BAD_ACCESS";
+	case EGL_BAD_ALLOC:
+		return "EGL_BAD_ALLOC";
+	case EGL_BAD_ATTRIBUTE:
+		return "EGL_BAD_ATTRIBUTE";
+	case EGL_BAD_CONTEXT:
+		return "EGL_BAD_CONTEXT";
+	case EGL_BAD_CONFIG:
+		return "EGL_BAD_CONFIG";
+	case EGL_BAD_CURRENT_SURFACE:
+		return "EGL_BAD_CURRENT_SURFACE";
+	case EGL_BAD_DISPLAY:
+		return "EGL_BAD_DISPLAY";
+	case EGL_BAD_SURFACE:
+		return "EGL_BAD_SURFACE";
+	case EGL_BAD_MATCH:
+		return "EGL_BAD_MATCH";
+	case EGL_BAD_PARAMETER:
+		return "EGL_BAD_PARAMETER";
+	case EGL_BAD_NATIVE_PIXMAP:
+		return "EGL_BAD_NATIVE_PIXMAP";
+	case EGL_BAD_NATIVE_WINDOW:
+		return "EGL_BAD_NATIVE_WINDOW";
+	case EGL_CONTEXT_LOST:
+		return "EGL_CONTEXT_LOST";
+	case EGL_SUCCESS:
+		return "NO ERROR";
+	default:
+		return "UNKNOWN ERROR";
+	}
 }
